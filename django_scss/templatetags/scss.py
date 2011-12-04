@@ -57,7 +57,7 @@ def do_inlinescss(parser, token):
     parser.delete_first_token()
     return InlineSCSSNode(nodelist)
 
-
+from django.template.loader import get_template
 @register.simple_tag
 def scss(path):
 
@@ -71,7 +71,10 @@ def scss(path):
     except AttributeError:
         STATIC_URL = settings.MEDIA_URL
 
-    encoded_full_path = full_path = os.path.join(STATIC_ROOT, path)
+    # templates can be anywhere, best use django to load them
+    template = get_template(path)
+
+    encoded_full_path = full_path = template.nodelist[0].source[0].name
     if isinstance(full_path, unicode):
         filesystem_encoding = sys.getfilesystemencoding() or sys.getdefaultencoding()
         encoded_full_path = full_path.encode(filesystem_encoding)
