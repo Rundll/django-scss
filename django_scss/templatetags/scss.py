@@ -1,18 +1,16 @@
 from ..cache import get_cache_key, get_hexdigest, get_hashed_mtime
 from ..settings import SCSS_EXECUTABLE, SCSS_USE_CACHE,\
-    SCSS_CACHE_TIMEOUT, SCSS_OUTPUT_DIR
-from ..utils import URLConverter
+    SCSS_CACHE_TIMEOUT, SCSS_OUTPUT_DIR, SCSS_DEVMODE, SCSS_DEVMODE_WATCH_DIRS, SCSS_INPUT_DIR, SCSS_OUTPUT_URL
+from ..utils import compile_scss
 from django.conf import settings
 from django.core.cache import cache
 from django.template.base import Library, Node
-import logging
 import shlex
 import subprocess
 import os
 import sys
 
 
-logger = logging.getLogger("django_scss")
 register = Library()
 
 
@@ -57,31 +55,18 @@ def do_inlinescss(parser, token):
     parser.delete_first_token()
     return InlineSCSSNode(nodelist)
 
-from django.template.loader import get_template
+
 @register.simple_tag
 def scss(path):
 
-    try:
-        STATIC_ROOT = settings.STATIC_ROOT
-    except AttributeError:
-        STATIC_ROOT = settings.MEDIA_ROOT
-
-    try:
-        STATIC_URL = settings.STATIC_URL
-    except AttributeError:
-        STATIC_URL = settings.MEDIA_URL
-
-    # templates can be anywhere, best use django to load them
-    template = get_template(path)
-
-    encoded_full_path = full_path = template.nodelist[0].source[0].name
+    encoded_full_path = full_path = os.path.join(SCSS_INPUT_DIR, path)
     if isinstance(full_path, unicode):
         filesystem_encoding = sys.getfilesystemencoding() or sys.getdefaultencoding()
         encoded_full_path = full_path.encode(filesystem_encoding)
 
     filename = os.path.split(path)[-1]
 
-    output_directory = os.path.join(STATIC_ROOT, SCSS_OUTPUT_DIR, os.path.dirname(path))
+    output_directory = os.path.join(SCSS_OUTPUT_DIR, os.path.dirname(path))
 
     hashed_mtime = get_hashed_mtime(full_path)
 
@@ -90,27 +75,18 @@ def scss(path):
     else:
         base_filename = filename
 
-    output_path = os.path.join(output_directory, "%s-%s.css" % (base_filename, hashed_mtime))
+    if SCSS_DEVMODE and any(map(lambda watched_dir: full_path.startswith(watched_dir), SCSS_DEVMODE_WATCH_DIRS)):
+        output_path = os.path.join(output_directory, "%s.css" % base_filename)
 
-    if not os.path.exists(output_path):
-        command = "%s -C %s" % (SCSS_EXECUTABLE, encoded_full_path)
-        args = shlex.split(command)
-        p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        out, errors = p.communicate()
-        if out:
-            if not os.path.exists(output_directory):
-                os.makedirs(output_directory)
-            compiled_file = open(output_path, "w+")
-            compiled_file.write(URLConverter(out, os.path.join(STATIC_URL, path)).convert())
-            compiled_file.close()
+    else:
+        output_path = os.path.join(output_directory, "%s-%s.css" % (base_filename, hashed_mtime))
+        if not compile_scss(encoded_full_path, output_path, path):
+            return SCSS_OUTPUT_URL + "%s-%s.css" % (base_filename, hashed_mtime)
 
-            # Remove old files
-            compiled_filename = os.path.split(output_path)[-1]
-            for filename in os.listdir(output_directory):
-                if filename.startswith(base_filename) and filename != compiled_filename:
-                    os.remove(os.path.join(output_directory, filename))
-        elif errors:
-            logger.error(errors)
-            return path
+        # Remove old files
+        compiled_filename = os.path.split(output_path)[-1]
+        for filename in os.listdir(output_directory):
+            if filename.startswith(base_filename) and filename != compiled_filename:
+                os.remove(os.path.join(output_directory, filename))
 
-    return output_path[len(STATIC_ROOT):].replace(os.sep, "/").lstrip("/")
+    return SCSS_OUTPUT_URL + compiled_filename
