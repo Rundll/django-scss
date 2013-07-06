@@ -19,6 +19,9 @@ setup(
     url = "https://github.com/andreyfedoseev/django-scss",
     description = "Django template tags to compile SCSS into CSS",
     long_description = "\n\n".join([README, CHANGES]),
+    install_requires=[
+        'pySass==1.1.5',
+    ],
     classifiers = [
         'Development Status :: 4 - Beta',
         'Framework :: Django',

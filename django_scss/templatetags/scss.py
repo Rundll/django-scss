@@ -1,5 +1,5 @@
 from ..cache import get_cache_key, get_hexdigest, get_hashed_mtime
-from ..settings import SCSS_EXECUTABLE, SCSS_USE_CACHE,\
+from ..settings import SCSS_USE_CACHE,\
     SCSS_CACHE_TIMEOUT, SCSS_OUTPUT_DIR, SCSS_DEVMODE, SCSS_DEVMODE_WATCH_DIRS, SCSS_INPUT_DIR, SCSS_OUTPUT_URL
 from ..utils import compile_scss
 from django.conf import settings
@@ -9,9 +9,18 @@ import shlex
 import subprocess
 import os
 import sys
-
+from django_scss.utils import Scss
 
 register = Library()
+
+_scss_vars = {}
+_scss = Scss(
+    scss_vars=_scss_vars,
+    scss_opts={
+        'compress': True,
+        'debug_info': True,
+    }
+)
 
 
 class InlineSCSSNode(Node):
@@ -20,19 +29,18 @@ class InlineSCSSNode(Node):
         self.nodelist = nodelist
 
     def compile(self, source):
+        scss.LOAD_PATHS = [
+            SCSS_INPUT_DIR,
+        ]
 
+        compiled_css_from_file = u''
 
-        args = shlex.split("%s -s --scss -C" % SCSS_EXECUTABLE)
+        try:
+            compiled_css_from_file = _scss.compile(source)
+        except:
+            raise
 
-        p = subprocess.Popen(args, stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        out, errors = p.communicate(source)
-        if out:
-            return out.decode("utf-8")
-        elif errors:
-            return errors.decode("utf-8")
-
-        return u""
+        return compiled_css_from_file
 
     def render(self, context):
         output = self.nodelist.render(context)

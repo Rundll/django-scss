@@ -1,4 +1,4 @@
-from django_scss.settings import SCSS_EXECUTABLE
+from django_scss.settings import SCSS_INPUT_DIR, SCSS_USE_COMPRESS
 from django.conf import settings
 import logging
 import os
@@ -6,6 +6,7 @@ import posixpath
 import re
 import shlex
 import subprocess
+from scss import Scss
 
 
 logger = logging.getLogger("django_scss")
@@ -32,15 +33,28 @@ class URLConverter(object):
         return URL_PATTERN.sub(self.convert_url, self.content)
 
 
-def compile_scss(input, output, scss_path):
-    command = "%s -C %s" % (SCSS_EXECUTABLE, input)
-    args = shlex.split(command)
-    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out, errors = p.communicate()
+_scss_vars = {}
+_scss = Scss(
+    scss_vars=_scss_vars,
+    scss_opts={
+        'compress': SCSS_USE_COMPRESS,
+        'debug_info': False,
+    }
+)
 
-    if errors:
-        logger.error(errors)
-        return False
+
+def compile_scss(input, output, scss_path):
+
+    _scss.LOAD_PATHS = [
+        SCSS_INPUT_DIR,
+    ]
+
+    out = u''
+
+    try:
+        out = _scss.compile(scss_file=input)
+    except:
+        raise
 
     try:
         STATIC_URL = settings.STATIC_URL
@@ -55,4 +69,3 @@ def compile_scss(input, output, scss_path):
     compiled_file.close()
 
     return True
-
